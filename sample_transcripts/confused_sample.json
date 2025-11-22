@@ -1,0 +1,7 @@
+[
+  {"type":"agent","text":"Starting Software Engineer mock interview. Persona: Confused."},
+  {"type":"agent","text":"Tell me about a challenging bug you fixed."},
+  {"type":"user","text":"I fixed a bug in code."},
+  {"type":"agent","text":"Could you elaborate a bit more with an example?"},
+  {"type":"user","text":"We had a memory leak caused by not closing file handles. I used a profiler, found the leak, closed handles and it reduced memory usage by 40%."}
+]

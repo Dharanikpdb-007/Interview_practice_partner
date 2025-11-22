@@ -1,0 +1,5 @@
+[
+  {"type":"agent","text":"Starting Software Engineer mock interview. Persona: Efficient."},
+  {"type":"agent","text":"Explain a project where you used data structures to improve performance."},
+  {"type":"user","text":"Used hash maps to reduce lookup from O(n) to O(1) which improved throughput."}
+]

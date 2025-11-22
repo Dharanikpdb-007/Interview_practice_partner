@@ -1,0 +1,26 @@
+Demo voiceover script (10-minute video)
+0:00 - 0:10 - Intro
+Hi, I'm [Your Name]. This is my Interview Practice Partner — a mock-interview chatbot built for the Eightfold.ai assignment.
+
+0:10 - 0:40 - Show UI & Configuration
+Here I choose the role 'Software Engineer' and the persona 'Confused'. I will run the fallback rule-based mode which requires no external API keys.
+
+0:40 - 3:00 - Live mock interview (sample)
+Start Interview.
+Interviewer: Tell me about a challenging bug you fixed.
+(Respond as the candidate. Show short answer, then show follow-up and extended answer.)
+
+3:00 - 5:00 - Another role / persona
+Switch persona to 'Efficient' and show how the agent faster moves through questions.
+
+5:00 - 6:30 - LLM mode (optional)
+If OpenAI API key is provided, switch to LLM mode to show improved follow-ups. (Demonstrate differences.)
+
+6:30 - 8:00 - End interview and show feedback
+Click 'End Interview & Get Feedback' and present the feedback report. Read out suggestions and scores.
+
+8:00 - 9:30 - Architecture & design notes
+Briefly explain the modular design: UI, Interview Engine, Feedback. Mention that fallback mode ensures the app works without internet keys.
+
+9:30 - 10:00 - Closing
+Thank you — repo link and run instructions are in the README.
