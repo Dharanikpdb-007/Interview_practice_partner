@@ -1,40 +1,89 @@
+import av
+import queue
+import threading
 import streamlit as st
-import tempfile
+from streamlit_webrtc import webrtc_streamer, WebRtcMode, ClientSettings
 import speech_recognition as sr
 from gtts import gTTS
 
+recognizer = sr.Recognizer()
+audio_queue = queue.Queue()
 
-def get_user_voice_text():
-    st.write("🎙️ Upload your recorded answer (MP3/WAV):")
+# Capture audio frames
+def audio_callback(frame):
+    audio = frame.to_ndarray().flatten()
+    audio_queue.put(audio)
+    return frame
 
-    audio_file = st.file_uploader("Upload audio", type=["wav", "mp3"])
 
-    if audio_file is None:
-        return None
+def listen_live_audio():
+    """
+    Takes live audio chunks from queue → converts to WAV → sends to Google STT.
+    """
+    wav_path = "live_audio.wav"
 
-    # Save to temp file
-    with tempfile.NamedTemporaryFile(delete=False, suffix=audio_file.name) as tmp:
-        tmp.write(audio_file.read())
-        temp_path = tmp.name
-
-    # Speech to text
-    recog = sr.Recognizer()
-    with sr.AudioFile(temp_path) as src:
-        audio = recog.record(src)
+    # Collect ~2 seconds of audio
+    import numpy as np
+    data = []
 
     try:
-        text = recog.recognize_google(audio)
-        return text
+        for _ in range(30):  # small chunks
+            data.append(audio_queue.get(timeout=1))
+    except:
+        pass
+
+    if not data:
+        return None
+
+    audio_data = np.concatenate(data).astype("int16")
+
+    # Write WAV file
+    import wave
+    with wave.open(wav_path, "wb") as wf:
+        wf.setnchannels(1)
+        wf.setsampwidth(2)
+        wf.setframerate(16000)
+        wf.writeframes(audio_data.tobytes())
+
+    # Speech Recognition
+    try:
+        with sr.AudioFile(wav_path) as src:
+            audio = recognizer.record(src)
+            text = recognizer.recognize_google(audio)
+            return text
     except:
         return "Sorry, I couldn't understand the audio."
 
 
+def get_user_voice_text():
+    """
+    Starts the live mic widget and listens for speech.
+    """
+    webrtc_streamer(
+        key="speech",
+        mode=WebRtcMode.SENDONLY,
+        audio_receiver_size=256,
+        client_settings=ClientSettings(
+            media_stream_constraints={"audio": True, "video": False}
+        ),
+        audio_frame_callback=audio_callback,
+    )
+
+    st.write("🎤 Speak now, then click the button below:")
+
+    if st.button("Transcribe Speech"):
+        return listen_live_audio()
+
+    return None
+
+
 def play_ai_voice(text):
+    """
+    Convert AI text → spoken voice via gTTS and play.
+    """
+    path = "ai_response.mp3"
     tts = gTTS(text=text, lang="en")
-    path = "ai_voice.mp3"
     tts.save(path)
 
     with open(path, "rb") as f:
-        audio_bytes = f.read()
-
-    st.audio(audio_bytes, format="audio/mp3")
+        st.audio(f.read(), format="audio/mp3")
