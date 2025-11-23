@@ -1,7 +1,1 @@
 streamlit
-streamlit-webrtc
-SpeechRecognition
-gTTS
-pydub
-numpy
-av
