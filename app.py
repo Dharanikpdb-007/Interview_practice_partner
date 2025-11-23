@@ -3,107 +3,123 @@ from interview_engine import InterviewEngine
 from feedback import analyze_interview
 from voice import get_user_voice_text, play_ai_voice
 
+st.set_page_config(page_title="AI Interview Partner", page_icon="🎤", layout="centered")
 
 # ---------------------------
-# Initialize Session State
+# Session State Initialization
 # ---------------------------
-def init_state():
-    if "engine" not in st.session_state:
-        st.session_state.engine = InterviewEngine()
+if "engine" not in st.session_state:
+    st.session_state.engine = None
+if "interview_started" not in st.session_state:
+    st.session_state.interview_started = False
+if "last_question" not in st.session_state:
+    st.session_state.last_question = None
+if "transcript" not in st.session_state:
+    st.session_state.transcript = []
+if "waiting_for_answer" not in st.session_state:
+    st.session_state.waiting_for_answer = False
 
-    if "transcript" not in st.session_state:
-        st.session_state.transcript = []
+st.title("🎤 AI Mock Interview Partner")
+st.subheader("Practice interviews with voice or text.")
 
-    if "started" not in st.session_state:
-        st.session_state.started = False
-
-
-init_state()
-
-
-# ---------------------------
-# Streamlit UI
-# ---------------------------
-st.set_page_config(page_title="Interview Practice Partner", layout="wide")
-st.title("🎯 Interview Practice Partner (Voice Enabled)")
-st.write("Mock interview with voice input/output. 100% local, no API.")
-
+st.markdown("---")
 
 # ---------------------------
-# Select Role + Persona Before Start
+# Settings
 # ---------------------------
-if not st.session_state.started:
-    col1, col2 = st.columns(2)
+role = st.selectbox("Select Interview Role:", ["Software Engineer", "Sales", "Retail Associate"])
+persona = st.selectbox("Choose Interviewer Persona:", ["Default", "Efficient", "Confused", "Chatty", "Edge"])
+q_count = st.slider("Number of Questions:", 1, 5, 3)
 
-    with col1:
-        role = st.selectbox(
-            "Select a job role:",
-            ["Software Engineer", "Sales", "Retail Associate"],
-            key="role_selector",
-        )
-
-    with col2:
-        persona = st.selectbox(
-            "Select interviewer persona:",
-            ["Default", "Confused", "Efficient", "Chatty", "Edge"],
-            key="persona_selector",
-        )
-
-    if st.button("Start Interview"):
-        st.session_state.engine = InterviewEngine(
-            role=role,
-            persona=persona,
-            question_count=3,
-        )
-        st.session_state.started = True
-
-        first_q = st.session_state.engine.ask_question()
-        st.session_state.transcript.append({"type": "agent", "text": first_q})
-        play_ai_voice(first_q)
-        st.experimental_rerun()
-
+start_btn = st.button("Start Interview")
 
 # ---------------------------
-# Only show interview UI after start
+# Start Interview
 # ---------------------------
-if st.session_state.started:
-    st.markdown("---")
-    st.subheader("🎤 Speak or Type Your Answer")
+if start_btn:
+    st.session_state.engine = InterviewEngine(role, persona, q_count)
+    st.session_state.engine.start()
+    q = st.session_state.engine.ask_question()
+    st.session_state.last_question = q
+    st.session_state.waiting_for_answer = True
+    st.session_state.interview_started = True
 
-    # Voice Input
-    voice_col, text_col = st.columns(2)
+    st.write("### Interviewer:")
+    st.info(q)
 
-    with voice_col:
-        st.write("🎤 **Voice Input**")
-        user_voice_text = get_user_voice_text()
+# ---------------------------
+# Main Interview Loop
+# ---------------------------
+if st.session_state.interview_started and st.session_state.waiting_for_answer:
 
-    # Typed Input
-    with text_col:
-        st.write("⌨️ **Text Input**")
-        user_typed_text = st.text_area(
-            "Type your answer here...", key="typed_answer"
-        )
+    st.markdown("### Your Answer")
 
-    # Determine active input
-    user_input = user_voice_text if user_voice_text else user_typed_text.strip()
+    # ==== OPTION 1: Voice answer ====
+    st.write("🎙️ Record & upload your answer:")
+    voice_text = get_user_voice_text()
 
+    # Display converted text if voice was uploaded
+    if voice_text:
+        st.success(f"Transcribed Text: {voice_text}")
+
+    # ==== OPTION 2: Text answer ====
+    manual_text = st.text_area("Or type your answer here:")
+
+    # ---------------------------
+    # Submit Answer
+    # ---------------------------
     if st.button("Submit Answer"):
-        if not user_input:
-            st.warning("Please speak or type your answer.")
+        user_answer = None
+        if voice_text and voice_text.strip():
+            user_answer = voice_text
+        elif manual_text and manual_text.strip():
+            user_answer = manual_text
+
+        if not user_answer:
+            st.error("Please provide either a voice or text answer.")
         else:
-            # Record user answer
-            st.session_state.transcript.append(
-                {"type": "user", "text": user_input}
-            )
+            result = st.session_state.engine.process_user_answer(user_answer)
+            st.session_state.transcript = st.session_state.engine.get_transcript()
 
-            # Process with engine
-            response = st.session_state.engine.process_user_answer(user_input)
+            st.write("### Interviewer Response:")
 
-            if response["action"] == "followup":
-                fup = response["followup"]
-                st.session_state.transcript.append(
-                    {"type": "agent", "text": fup}
-                )
-                st.write("### 🤖 Follow-up:")
-                st.write(fup)
-                play_ai_voice(fup)
+            if result["action"] == "followup":
+                st.warning(result["followup"])
+                play_ai_voice(result["followup"])
+                st.session_state.waiting_for_answer = True
+
+            elif result["action"] == "next":
+                st.info(result["next_question"])
+                play_ai_voice(result["next_question"])
+                st.session_state.last_question = result["next_question"]
+                st.session_state.waiting_for_answer = True
+
+            else:
+                st.success("Interview finished!")
+                play_ai_voice("The interview has concluded. Thank you for participating!")
+                st.session_state.waiting_for_answer = False
+
+# ---------------------------
+# FEEDBACK SECTION
+# ---------------------------
+st.markdown("---")
+st.header("📊 Interview Feedback")
+
+if st.button("Generate Feedback Report"):
+    if not st.session_state.transcript:
+        st.error("No transcript available yet.")
+    else:
+        report = analyze_interview(st.session_state.transcript)
+
+        st.subheader("Scores")
+        st.write(f"**Communication:** {report['communication']} / 5")
+        st.write(f"**Technical Depth:** {report['technical']} / 5")
+        st.write(f"**Examples/STAR Usage:** {report['examples']} / 5")
+        st.write(f"### 🏆 Composite Score: **{report['composite']} / 5**")
+
+        st.markdown("### Suggestions")
+        for s in report["suggestions"]:
+            st.write(f"- {s}")
+
+        st.markdown("### Meta")
+        st.json(report["meta"])
