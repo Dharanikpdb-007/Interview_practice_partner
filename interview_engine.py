@@ -4,11 +4,10 @@ import os
 from dotenv import load_dotenv
 import openai
 
-# Load environment variables from .env
-load_dotenv()
-openai.api_key = os.getenv("OPENAI_API_KEY")  # Make sure your .env has OPENAI_API_KEY=your_key
 
-# Question bank
+load_dotenv()
+openai.api_key = os.getenv("OPENAI_API_KEY")  
+
 QUESTION_BANK = {
     "Software Engineer": [
         {"id": "se1", "q": "Tell me about a challenging bug you fixed.", "type": "behavioral"},
@@ -37,12 +36,12 @@ class InterviewEngine:
         self.role = role
         self.persona = persona
         self.mode = mode
-        self.events = []  # stores conversation
+        self.events = []
         self.current_question = 0
         self.questions = self.load_questions()
 
     def load_questions(self):
-        # Load questions from QUESTION_BANK if needed, else default
+      
         return [q["q"] for q in QUESTION_BANK.get(self.role, [])] or [
             "Tell me about yourself.",
             "Why do you want this job?",
@@ -66,14 +65,14 @@ class InterviewEngine:
             self.add_agent_response_fallback()
 
     def add_agent_response_fallback(self):
-        # Static simple response
+       
         if self.current_question < len(self.questions):
             response = "Thank you for your answer."
             self.events.append({"type": "agent", "text": response})
             self.current_question += 1
 
     def add_agent_response_llm(self):
-        # Use OpenAI v1 API
+        
         if self.current_question < len(self.questions):
             prompt = (
                 f"You are an interviewer. Role: {self.role}, Persona: {self.persona}.\n"
