@@ -1,151 +1,86 @@
 import streamlit as st
 from interview_engine import InterviewEngine
 from feedback import analyze_interview
-from voice import get_user_voice_text, play_ai_voice
+from voice import record_user_audio, play_ai_voice
+import base64
+import speech_recognition as sr
+import tempfile
 
 st.set_page_config(page_title="AI Interview Partner", layout="wide")
-st.title("🎙 AI Interview Practice Partner (Live Voice, Browser-based)")
 
-# ---------------------------
-# Session state init
-# ---------------------------
+# session init
 if "engine" not in st.session_state:
-    st.session_state.engine = None
-if "started" not in st.session_state:
-    st.session_state.started = False
-if "transcript" not in st.session_state:
-    st.session_state.transcript = []  # list of {"type": "agent"|"user"|"system", "text": "..."}
-if "current_question" not in st.session_state:
-    st.session_state.current_question = None
+    st.session_state.engine = InterviewEngine()
 
-# ---------------------------
-# Controls: role / persona / qcount
-# ---------------------------
-col1, col2, col3 = st.columns(3)
-with col1:
-    role = st.selectbox("Role", ["Software Engineer", "Sales", "Retail Associate"], index=0)
-with col2:
-    persona = st.selectbox("Persona", ["Default", "Confused", "Efficient", "Chatty", "Edge"], index=0)
-with col3:
-    q_count = st.slider("Number of questions", 1, 6, 3)
+if "chat" not in st.session_state:
+    st.session_state.chat = []
 
-start = st.button("Start / Restart Interview")
+st.title("🎤 AI Interview Practice Partner (Voice Mode — Option B)")
 
-# ---------------------------
-# Start interview
-# ---------------------------
-if start:
-    st.session_state.engine = InterviewEngine(role=role, persona=persona, question_count=q_count)
-    st.session_state.engine.start()
-    first_q = st.session_state.engine.ask_question()
-    st.session_state.transcript = st.session_state.engine.get_transcript()
-    st.session_state.started = True
-    st.session_state.current_question = first_q
-    # Play the question
-    play_ai_voice(first_q)
 
-st.markdown("---")
+# ------------------------------------------------------------
+# START INTERVIEW
+# ------------------------------------------------------------
+if st.button("Start Interview"):
+    q = st.session_state.engine.ask_question()
+    if q:
+        st.session_state.chat.append(("AI", q))
+        play_ai_voice(q)
 
-# ---------------------------
-# If interview active, show current question and accept answer
-# ---------------------------
-if st.session_state.started and st.session_state.engine:
-    st.subheader("Conversation")
-    # render transcript
-    for ev in st.session_state.transcript:
-        if ev["type"] == "system":
-            st.info(ev["text"])
-        elif ev["type"] == "agent":
-            st.markdown(f"**Interviewer:** {ev['text']}")
-        elif ev["type"] == "user":
-            st.markdown(f"**You:** {ev['text']}")
 
-    st.markdown("---")
-    st.subheader("Answer the current question (speak or type)")
+# ------------------------------------------------------------
+# USER RECORDING (OPTION B)
+# ------------------------------------------------------------
+st.subheader("🎙 Speak Your Answer")
+audio_b64 = record_user_audio()
 
-    # show the active agent question (last agent item)
-    current_q = None
-    for ev in reversed(st.session_state.transcript):
-        if ev["type"] == "agent":
-            current_q = ev["text"]
-            break
-    if current_q:
-        st.write(f"**Interviewer:** {current_q}")
-    else:
-        st.write("No question available. Click Start to begin.")
+if audio_b64:
+    # convert base64 to wav file
+    audio_bytes = base64.b64decode(audio_b64)
 
-    # Live voice capture (browser-side)
-    voice_text = get_user_voice_text()
-    if voice_text:
-        st.success(f"Captured text: {voice_text}")
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
+        tmp.write(audio_bytes)
+        audio_path = tmp.name
 
-    typed = st.text_area("Or type your answer here (overrides voice if non-empty):", key="typed_answer", height=120)
+    # transcribe
+    r = sr.Recognizer()
+    with sr.AudioFile(audio_path) as source:
+        audio_data = r.record(source)
+        try:
+            text = r.recognize_google(audio_data)
+        except:
+            text = ""
 
-    submit = st.button("Submit Answer")
+    if text:
+        st.session_state.chat.append(("You", text))
 
-    if submit:
-        answer = None
-        if typed and typed.strip():
-            answer = typed.strip()
-        elif voice_text and voice_text.strip():
-            answer = voice_text.strip()
+        # engine generate next step
+        result = st.session_state.engine.process_user_answer(text)
 
-        if not answer:
-            st.warning("Please speak or type an answer before submitting.")
+        if result["action"] == "followup":
+            reply = result["followup"]
+        elif result["action"] == "next":
+            reply = result["next_question"]
         else:
-            # feed to engine
-            res = st.session_state.engine.process_user_answer(answer)
-            # update transcript from engine (engine already appends user & agent events)
-            st.session_state.transcript = st.session_state.engine.get_transcript()
+            reply = "That concludes the interview. Thank you!"
 
-            # handle action
-            action = res.get("action")
-            if action == "followup":
-                fup = res.get("followup")
-                st.info("Interviewer (follow-up):")
-                st.write(fup)
-                play_ai_voice(fup)
-            elif action == "next":
-                next_q = res.get("next_question")
-                st.info("Interviewer (next question):")
-                st.write(next_q)
-                play_ai_voice(next_q)
-            elif action == "done":
-                done_msg = "That concludes the mock interview. Thank you!"
-                st.success(done_msg)
-                play_ai_voice(done_msg)
+        # log & speak
+        st.session_state.chat.append(("AI", reply))
+        play_ai_voice(reply)
 
-# ---------------------------
-# Feedback and export
-# ---------------------------
-st.markdown("---")
-st.header("Feedback & Export")
 
-if st.button("Generate Feedback"):
-    if not st.session_state.transcript:
-        st.error("No transcript available. Run an interview first.")
-    else:
-        report = analyze_interview(st.session_state.transcript)
-        st.subheader("Feedback Report")
-        if "error" in report:
-            st.error(report["error"])
-        else:
-            st.metric("Composite (0-5)", report["composite"])
-            st.metric("Communication (0-5)", report["communication"])
-            st.metric("Technical (0-5)", report["technical"])
-            st.metric("Examples (0-5)", report["examples"])
-            st.markdown("**Suggestions**")
-            for s in report["suggestions"]:
-                st.write(f"- {s}")
-            st.markdown("**Meta**")
-            st.json(report["meta"])
+# ------------------------------------------------------------
+# SHOW CHAT
+# ------------------------------------------------------------
+st.subheader("Conversation")
+for spk, msg in st.session_state.chat:
+    st.markdown(f"**{spk}:** {msg}")
 
-if st.button("Export transcript as JSON"):
-    import json, io
-    if not st.session_state.transcript:
-        st.error("No transcript to export.")
-    else:
-        out = {"transcript": st.session_state.transcript}
-        buf = io.StringIO()
-        json.dump(out, buf, indent=2)
-        st.download_button("Download JSON", data=buf.getvalue(), file_name="interview_transcript.json", mime="application/json")
+
+# ------------------------------------------------------------
+# FEEDBACK
+# ------------------------------------------------------------
+if st.button("Get Feedback"):
+    transcript = [{"type": "user" if p == "You" else "agent", "text": m} for p, m in st.session_state.chat]
+    report = analyze_interview(transcript)
+    st.write(report)
