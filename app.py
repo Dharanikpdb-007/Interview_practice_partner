@@ -1,86 +1,68 @@
 import streamlit as st
+import base64
+import tempfile
+import speech_recognition as sr
+
 from interview_engine import InterviewEngine
 from feedback import analyze_interview
 from voice import record_user_audio, play_ai_voice
-import base64
-import speech_recognition as sr
-import tempfile
 
 st.set_page_config(page_title="AI Interview Partner", layout="wide")
 
-# session init
 if "engine" not in st.session_state:
     st.session_state.engine = InterviewEngine()
 
 if "chat" not in st.session_state:
     st.session_state.chat = []
 
-st.title("🎤 AI Interview Practice Partner (Voice Mode — Option B)")
+st.title("🎤 AI Interview Practice Partner (Voice Mode)")
 
-
-# ------------------------------------------------------------
-# START INTERVIEW
-# ------------------------------------------------------------
 if st.button("Start Interview"):
-    q = st.session_state.engine.ask_question()
-    if q:
-        st.session_state.chat.append(("AI", q))
-        play_ai_voice(q)
+    first_q = st.session_state.engine.ask_question()
+    if first_q:
+        st.session_state.chat.append(("AI", first_q))
+        play_ai_voice(first_q)
 
-
-# ------------------------------------------------------------
-# USER RECORDING (OPTION B)
-# ------------------------------------------------------------
 st.subheader("🎙 Speak Your Answer")
 audio_b64 = record_user_audio()
 
 if audio_b64:
-    # convert base64 to wav file
     audio_bytes = base64.b64decode(audio_b64)
 
     with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
         tmp.write(audio_bytes)
-        audio_path = tmp.name
+        wav_path = tmp.name
 
-    # transcribe
-    r = sr.Recognizer()
-    with sr.AudioFile(audio_path) as source:
-        audio_data = r.record(source)
+    recognizer = sr.Recognizer()
+    with sr.AudioFile(wav_path) as src:
+        audio_data = recognizer.record(src)
         try:
-            text = r.recognize_google(audio_data)
+            user_text = recognizer.recognize_google(audio_data)
         except:
-            text = ""
+            user_text = ""
 
-    if text:
-        st.session_state.chat.append(("You", text))
-
-        # engine generate next step
-        result = st.session_state.engine.process_user_answer(text)
+    if user_text:
+        st.session_state.chat.append(("You", user_text))
+        result = st.session_state.engine.process_user_answer(user_text)
 
         if result["action"] == "followup":
-            reply = result["followup"]
+            ai_reply = result["followup"]
         elif result["action"] == "next":
-            reply = result["next_question"]
+            ai_reply = result["next_question"]
         else:
-            reply = "That concludes the interview. Thank you!"
+            ai_reply = "Thank you for completing the interview."
 
-        # log & speak
-        st.session_state.chat.append(("AI", reply))
-        play_ai_voice(reply)
+        st.session_state.chat.append(("AI", ai_reply))
+        play_ai_voice(ai_reply)
 
-
-# ------------------------------------------------------------
-# SHOW CHAT
-# ------------------------------------------------------------
 st.subheader("Conversation")
-for spk, msg in st.session_state.chat:
-    st.markdown(f"**{spk}:** {msg}")
+for role, message in st.session_state.chat:
+    st.markdown(f"**{role}:** {message}")
 
-
-# ------------------------------------------------------------
-# FEEDBACK
-# ------------------------------------------------------------
 if st.button("Get Feedback"):
-    transcript = [{"type": "user" if p == "You" else "agent", "text": m} for p, m in st.session_state.chat]
-    report = analyze_interview(transcript)
-    st.write(report)
+    transcript = [
+        {"type": "user" if r == "You" else "agent", "text": m}
+        for r, m in st.session_state.chat
+    ]
+    fb = analyze_interview(transcript)
+    st.write(fb)
