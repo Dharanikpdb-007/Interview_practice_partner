@@ -1,6 +1,6 @@
 streamlit
 gTTS
-PyPDF2
-plotly
-pandas
+whisper
+streamlit-webrtc
+torch
 numpy
