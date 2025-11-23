@@ -1,57 +1,84 @@
 import streamlit as st
 from interview_engine import InterviewEngine
-from utils import save_transcript
 from feedback import analyze_interview
+from utils import save_transcript
+import speech_recognition as sr
+import pyttsx3
 
 st.set_page_config(page_title="Interview Practice Partner", layout="centered")
+
+engine_tts = pyttsx3.init()
+voices = engine_tts.getProperty("voices")
+engine_tts.setProperty("voice", voices[1].id)
+engine_tts.setProperty("rate", 165)
+
+def speak(text):
+    engine_tts.say(text)
+    engine_tts.runAndWait()
+
+if "engine" not in st.session_state:
+    st.session_state.engine = InterviewEngine()
+if "mode" not in st.session_state:
+    st.session_state.mode = "Chat"
+
+engine = st.session_state.engine
+
+role = st.sidebar.selectbox("Select Interview Role", ["Software Engineer", "HR", "Sales", "Data Analyst"])
+if role != engine.role:
+    st.session_state.engine = InterviewEngine(role=role)
+    engine = st.session_state.engine
+
+mode = st.sidebar.radio("Interaction Mode", ["Chat", "Voice"])
+
 st.title("Interview Practice Partner")
+st.subheader("AI Mock Interview with Voice & Chat Support")
 
-role = st.sidebar.selectbox("Role", ["Software Engineer", "Sales", "Retail Associate"])
-persona = st.sidebar.selectbox("User Persona", ["Confused", "Efficient", "Chatty", "Edge Case"])
-mode = st.sidebar.selectbox("Mode", ["Fallback (rule-based)", "LLM (OpenAI) - optional"])
+messages = engine.get_transcript()
 
-if "engine" not in st.session_state or st.session_state.get("config") != (role, persona, mode):
-    st.session_state.engine = InterviewEngine(role=role, persona=persona, mode=mode)
-    st.session_state["config"] = (role, persona, mode)
+for m in messages:
+    if m["type"] == "agent":
+        st.chat_message("assistant").write(m["text"])
+    else:
+        st.chat_message("user").write(m["text"])
 
-engine: InterviewEngine = st.session_state.engine
+if messages and messages[-1]["type"] == "agent":
+    speak(messages[-1]["text"])
 
-col1, col2 = st.columns([3,1])
+if mode == "Chat":
+    user_input = st.chat_input("Your answer")
+    if user_input:
+        speak(user_input)
+        engine.add_user_response(user_input)
+        st.experimental_rerun()
+else:
+    if st.button("🎙 Speak Answer"):
+        recognizer = sr.Recognizer()
+        try:
+            with sr.Microphone() as source:
+                audio = recognizer.listen(source, phrase_time_limit=12)
+            text = recognizer.recognize_google(audio)
+        except:
+            text = ""
+        if text:
+            speak(text)
+            engine.add_user_response(text)
+            st.experimental_rerun()
 
-with col1:
-    st.subheader("Interview Chat")
-    for ev in engine.get_events():
-        if ev["type"] == "agent":
-            st.markdown(f"**Interviewer**: {ev['text']}")
-        else:
-            st.markdown(f"**You**: {ev['text']}")
+if st.button("Next Question ➜"):
+    engine.advance_question()
+    st.experimental_rerun()
 
-with col2:
-    st.subheader("Controls")
-    if st.button("Start Interview"):
-        engine.start()
-        st.rerun()
-    if st.button("Next Question"):
-        engine.force_next()
-        st.rerun()
-    if st.button("End Interview & Get Feedback"):
-        transcript = engine.get_transcript()
-        save_transcript(transcript, path="transcript.json")
-        feedback = analyze_interview(transcript)
-        st.session_state["last_feedback"] = feedback
-        st.rerun()
-
-user_input = st.text_input("Your answer (press Enter to send)")
-if user_input:
-    engine.add_user_response(user_input)
-    st.rerun()
-
-if st.session_state.get("last_feedback"):
-    st.subheader("Feedback Report")
-    fb = st.session_state["last_feedback"]
-    st.write(f"Communication score: {fb['communication']} / 5")
-    st.write(f"Technical score: {fb['technical']} / 5")
-    st.write(f"Examples score: {fb['examples']} / 5")
+if st.button("Generate Feedback"):
+    transcript = engine.get_transcript()
+    report = analyze_interview(transcript)
+    save_transcript(transcript, "transcript.json")
+    st.subheader("📊 Performance Report")
+    st.metric("Communication", f"{report['communication']} / 5")
+    st.metric("Structure (STAR)", f"{report['structure']} / 5")
+    st.metric("Technical Depth", f"{report['technical']} / 5")
+    st.metric("Examples & Metrics", f"{report['examples']} / 5")
     st.write("Suggestions:")
-    for s in fb["suggestions"]:
-        st.write(f"- {s}")
+    for s in report["suggestions"]:
+        st.write("-", s)
+    speak("Interview complete. Review your feedback below.")
+    st.session_state.engine = InterviewEngine(role=role)
