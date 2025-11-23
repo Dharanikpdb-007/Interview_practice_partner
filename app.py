@@ -5,18 +5,30 @@ import io
 import random
 from typing import List, Dict
 import re
-import whisper
+import numpy as np
+import speech_recognition as sr
 from streamlit_webrtc import webrtc_streamer, AudioProcessorBase, WebRtcMode
 
 st.set_page_config(page_title="Interview Practice Partner", layout="wide")
 
-model = whisper.load_model("base")
-
 QUESTIONS = {
-    "Software Engineer": ["Tell me about yourself.", "Explain OOP concepts.", "Tell me about a challenging bug you fixed."],
-    "HR": ["Introduce yourself.", "Describe a time you resolved a conflict."],
-    "Sales": ["How do you handle objections?", "Tell me about a successful pitch."],
-    "Data Analyst": ["Explain a data project.", "How do you clean messy data?"]
+    "Software Engineer": [
+        "Tell me about yourself.",
+        "Explain OOP concepts.",
+        "Tell me about a challenging bug you fixed."
+    ],
+    "HR": [
+        "Introduce yourself.",
+        "Describe a time you resolved a conflict."
+    ],
+    "Sales": [
+        "How do you handle objections?",
+        "Tell me about a successful pitch."
+    ],
+    "Data Analyst": [
+        "Explain a data project.",
+        "How do you clean messy data?"
+    ]
 }
 
 if "transcript" not in st.session_state:
@@ -44,8 +56,8 @@ def analyze_interview(transcript: List[Dict]):
         wc = len(a.split())
         communication_score += 4.5 if wc > 80 else 4.0 if wc > 40 else 3.0 if wc > 20 else 2.0
 
-        tech_keys = ["design", "algorithm", "debug", "performance", "optimization", "complexity"]
-        technical_score += 4.0 if any(k in a.lower() for k in tech_keys) else 2.0
+        tech_keywords = ["design", "algorithm", "debug", "performance", "optimization", "complexity"]
+        technical_score += 4.0 if any(k in a.lower() for k in tech_keywords) else 2.0
 
         examples_score += 4.0 if re.search(r'\b(\d+%|improved|reduced|resulted)\b', a.lower()) else 2.0
 
@@ -58,12 +70,19 @@ def analyze_interview(transcript: List[Dict]):
 
 
 class AudioProcessor(AudioProcessorBase):
+    def __init__(self):
+        self.recognizer = sr.Recognizer()
+
     def recv_audio(self, frame):
         audio = frame.to_ndarray()
-        result = model.transcribe(audio, fp16=False)
-        text = result["text"].strip()
-        if text:
-            st.session_state.transcript.append({"type": "user", "text": text})
+        audio = audio.astype(np.float32).tobytes()
+        audio_data = sr.AudioData(audio, 16000, 2)
+        try:
+            text = self.recognizer.recognize_google(audio_data)
+            if text:
+                st.session_state.transcript.append({"type": "user", "text": text})
+        except:
+            pass
         return frame
 
 
