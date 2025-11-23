@@ -1,169 +1,135 @@
-# interview_engine.py
-import random
-import re
-from typing import List, Dict, Optional
+# app.py
+import streamlit as st
+from interview_engine import InterviewEngine
+from feedback import analyze_interview
+import json
+import os
 
-QUESTION_BANK = {
-    "Software Engineer": [
-        {"id": "se1", "q": "Tell me about a challenging bug you fixed.", "type": "behavioral"},
-        {"id": "se2", "q": "Explain a project where you used data structures to improve performance.", "type": "technical"},
-        {"id": "se3", "q": "How do you approach debugging a production issue?", "type": "technical"},
-        {"id": "se4", "q": "Describe a time you made a tradeoff between speed and correctness.", "type": "behavioral"},
-    ],
-    "Sales": [
-        {"id": "sa1", "q": "Tell me about a sale you are proud of.", "type": "behavioral"},
-        {"id": "sa2", "q": "How do you handle objections from a difficult prospect?", "type": "behavioral"},
-        {"id": "sa3", "q": "How do you prioritize leads?", "type": "technical"},
-    ],
-    "Retail Associate": [
-        {"id": "rt1", "q": "Describe a time you handled an unhappy customer.", "type": "behavioral"},
-        {"id": "rt2", "q": "How do you balance speed vs. accuracy when working the register?", "type": "behavioral"},
-    ],
-}
+st.set_page_config(page_title="Interview Practice Partner (Local)", layout="centered")
 
-# Personas change follow-up aggressiveness and tone
-PERSONAS = {
-    "Confused": {"followup_style": "clarify", "max_followups": 3},
-    "Efficient": {"followup_style": "concise", "max_followups": 1},
-    "Chatty": {"followup_style": "explore", "max_followups": 4},
-    "Edge": {"followup_style": "boundary", "max_followups": 2},
-    "Default": {"followup_style": "balanced", "max_followups": 2},
-}
+# Sidebar controls
+st.sidebar.title("Settings")
+role = st.sidebar.selectbox("Role", ["Software Engineer", "Sales", "Retail Associate"])
+persona = st.sidebar.selectbox("Persona (test scenarios)", ["Default", "Confused", "Efficient", "Chatty", "Edge"])
+question_count = st.sidebar.slider("Number of questions", min_value=1, max_value=6, value=3)
+st.sidebar.markdown("---")
+st.sidebar.markdown("**Project ZIP (uploaded)**")
+st.sidebar.caption("Path in container (for your convenience):")
+st.sidebar.code("/mnt/data/Interview_practice_partner-main.zip")
 
-# Heuristic patterns
-METRIC_PATTERN = re.compile(r"\b\d+%|\b\d+\s*(ms|s|seconds|minutes|hours|GB|MB|gb|mb)\b")
-TEAM_WORDS = {"we", "team", "our", "us"}
-FIRST_PERSON = {"i", "me", "my", "mine"}
+st.title("Interview Practice Partner — Local (No external APIs)")
 
-def _contains_metrics(text: str) -> bool:
-    return bool(METRIC_PATTERN.search(text))
+# Create engine in session state to keep across reruns
+if "engine" not in st.session_state or st.session_state.get("params") != (role, persona, question_count):
+    st.session_state.engine = InterviewEngine(role=role, persona=persona, question_count=question_count)
+    st.session_state.engine.start()
+    st.session_state.params = (role, persona, question_count)
+    st.session_state.transcript = st.session_state.engine.get_transcript()
 
-def _uses_first_person(text: str) -> bool:
-    t = text.lower()
-    return any(f in t.split() for f in FIRST_PERSON)
+engine: InterviewEngine = st.session_state.engine
 
-def _uses_team_words(text: str) -> bool:
-    t = text.lower()
-    return any(w in t.split() for w in TEAM_WORDS)
+col1, col2 = st.columns([2, 1])
 
-def _word_count(text: str) -> int:
-    return len(text.strip().split())
+with col1:
+    st.header("Conversation")
+    transcript = engine.get_transcript()
+    # Render transcript nicely
+    for ev in transcript:
+        ttype = ev["type"]
+        text = ev["text"]
+        if ttype == "system":
+            st.info(text)
+        elif ttype == "agent":
+            st.markdown(f"**Interviewer:** {text}")
+        elif ttype == "user":
+            st.markdown(f"**You:** {text}")
 
-def _has_action_words(text: str) -> bool:
-    # action words: built, designed, implemented, reduced, improved, fixed
-    actions = ["built", "designed", "implemented", "reduced", "improved", "fixed", "led", "created", "optimized"]
-    t = text.lower()
-    return any(a in t for a in actions)
+with col2:
+    st.header("Controls")
+    if st.button("Ask first / Restart interview"):
+        engine = InterviewEngine(role=role, persona=persona, question_count=question_count)
+        engine.start()
+        st.session_state.engine = engine
+        st.session_state.params = (role, persona, question_count)
 
-class InterviewEngine:
-    def __init__(self, role: str = "Software Engineer", persona: str = "Default", question_count: int = 3):
-        self.role = role if role in QUESTION_BANK else "Software Engineer"
-        self.persona = persona if persona in PERSONAS else "Default"
-        bank = QUESTION_BANK.get(self.role, [])
-        # deterministic-ish shuffle for repeatable demo (seeded by role/persona)
-        seed = hash((self.role, self.persona)) & 0xffffffff
-        rng = random.Random(seed)
-        rng.shuffle(bank)
-        self.questions = [q["q"] for q in bank][:question_count]
-        self.q_types = [q.get("type", "behavioral") for q in bank][:question_count]
-        self.current_index = 0
-        self.events: List[Dict] = [{"type": "system", "text": f"Interview started for role={self.role}, persona={self.persona}"}]
-        self.followup_counts = {}  # which question index got how many followups
+    if st.button("Ask next question (force)"):
+        q = engine.force_next()
+        st.session_state.engine = engine
 
-    def start(self):
-        self.current_index = 0
-        self.events = [{"type": "system", "text": f"Interview started for role={self.role}, persona={self.persona}"}]
-        self.followup_counts = {}
+    st.markdown("---")
+    st.markdown("**Quick scenarios**")
+    if st.button("Load Confused scenario answers"):
+        # Example short answers to provoke followups
+        engine.start()
+        engine.ask_question()
+        engine.process_user_answer("I'm not sure. It was something with the code.")
+        engine.process_user_answer("We fixed it.")
+        st.session_state.engine = engine
 
-    def ask_question(self) -> Optional[str]:
-        if self.current_index < len(self.questions):
-            q = self.questions[self.current_index]
-            self.events.append({"type": "agent", "text": q})
-            return q
-        return None
+    if st.button("Load Efficient scenario answers"):
+        engine.start()
+        engine.ask_question()
+        engine.process_user_answer("I debugged a race condition and added a mutex. Reduced failures by 40%.")
+        engine.process_user_answer("I optimized DB queries, reduced latency by 120 ms.")
+        st.session_state.engine = engine
 
-    def _heuristic_followup(self, q_text: str, answer: str, style: str) -> Optional[str]:
-        # style: clarify, concise, explore, boundary, balanced
-        wc = _word_count(answer)
-        has_metrics = _contains_metrics(answer)
-        has_action = _has_action_words(answer)
-        uses_team = _uses_team_words(answer)
-        uses_first = _uses_first_person(answer)
+    st.markdown("---")
+    if st.button("Show transcript JSON"):
+        st.json(engine.get_transcript())
 
-        # If very short, always ask to expand
-        if wc < 20:
-            if style in ("clarify", "balanced", "explore"):
-                return "Could you expand a bit — what exactly did you do and why?"
-            if style == "concise":
-                return "One-sentence highlight: what was your single contribution?"
-        # If no metrics and technical question, ask for metrics or tradeoffs
-        if not has_metrics and ("technical" in q_text.lower() or "data" in q_text.lower() or "performance" in q_text.lower()):
-            return "Can you quantify the impact or mention performance tradeoffs (latency, throughput, complexity)?"
-        # If uses team words without clarifying role, ask for personal contribution
-        if uses_team and not uses_first:
-            return "You mentioned the team — what was your specific contribution?"
-        # If contains action but no result, ask for result
-        if has_action and not has_metrics:
-            return "What was the outcome or result of that work?"
-        # For chatty style, probe decisions
-        if style == "explore":
-            return "Interesting — why did you choose that approach over alternatives?"
-        # Boundary: bring back to role
-        if style == "boundary":
-            return "That sounds related to other contexts — how does it map to this role's responsibilities?"
-        # Default fallback (ask for steps and outcome)
-        return "Can you outline the steps you took and the measurable outcome?"
+st.markdown("---")
+st.header("Answer the current question")
+current_q = None
+# find last agent question
+for ev in reversed(engine.get_transcript()):
+    if ev["type"] == "agent":
+        current_q = ev["text"]
+        break
 
-    def process_user_answer(self, answer_text: str) -> Dict:
-        # record user answer
-        self.events.append({"type": "user", "text": answer_text})
-        style = PERSONAS[self.persona]["followup_style"]
-        max_fups = PERSONAS[self.persona]["max_followups"]
-        idx = self.current_index
-        fcount = self.followup_counts.get(idx, 0)
+if not current_q:
+    # Ask first question
+    q = engine.ask_question()
+    current_q = q
 
-        # Decide if a followup should be asked
-        ask_followup = False
-        wc = _word_count(answer_text)
-        # heuristics
-        if fcount < max_fups:
-            if wc < 30:
-                ask_followup = True
-            elif not _has_action_words(answer_text):
-                ask_followup = True
-            elif not _contains_metrics(answer_text) and ("technical" in self.q_types[idx] if idx < len(self.q_types) else False):
-                ask_followup = True
-            elif style == "explore" and fcount < max_fups:
-                ask_followup = True
-            # edge: if user repeatedly goes off-topic, attempt boundary followup
-            if re.search(r"(why are you asking|this is irrelevant|how does that help)", answer_text.lower()):
-                ask_followup = False  # ignore and move on
+st.write(f"**Interviewer:** {current_q}")
+answer = st.text_area("Your answer (type and press Submit)", height=150)
 
-        if ask_followup:
-            fup = self._heuristic_followup(self.questions[idx], answer_text, style)
-            self.followup_counts[idx] = fcount + 1
-            if fup:
-                self.events.append({"type": "agent", "text": fup})
-                return {"action": "followup", "followup": fup}
-
-        # Move to next question
-        self.current_index += 1
-        if self.current_index < len(self.questions):
-            next_q = self.questions[self.current_index]
-            self.events.append({"type": "agent", "text": next_q})
-            return {"action": "next", "next_question": next_q}
+cola, colb, colc = st.columns(3)
+with cola:
+    if st.button("Submit answer"):
+        if not answer.strip():
+            st.warning("Please enter an answer before submitting.")
         else:
-            self.events.append({"type": "agent", "text": "That concludes the mock interview. Thank you!"})
-            return {"action": "done"}
+            res = engine.process_user_answer(answer.strip())
+            st.session_state.engine = engine
+            st.success(f"Agent action: {res.get('action')}")
+with colb:
+    if st.button("Request feedback now (on current transcript)"):
+        report = analyze_interview(engine.get_transcript())
+        st.subheader("Feedback report")
+        if "error" in report:
+            st.error(report["error"])
+        else:
+            st.metric("Composite (0-5)", report["composite"])
+            st.metric("Communication (0-5)", report["communication"])
+            st.metric("Technical (0-5)", report["technical"])
+            st.metric("Examples (0-5)", report["examples"])
+            st.markdown("**Suggestions**")
+            for s in report["suggestions"]:
+                st.write(f"- {s}")
+            st.markdown("**Meta**")
+            st.write(report["meta"])
 
-    def force_next(self) -> Optional[str]:
-        self.current_index += 1
-        if self.current_index < len(self.questions):
-            q = self.questions[self.current_index]
-            self.events.append({"type": "agent", "text": q})
-            return q
-        self.events.append({"type": "agent", "text": "That concludes the mock interview. Thank you!"})
-        return None
+with colc:
+    if st.button("Export transcript & feedback"):
+        transcript = engine.get_transcript()
+        report = analyze_interview(transcript)
+        out = {"transcript": transcript, "feedback": report}
+        fname = "interview_session.json"
+        with open(fname, "w", encoding="utf-8") as f:
+            json.dump(out, f, indent=2)
+        with open(fname, "rb") as f:
+            st.download_button("Download session JSON", data=f, file_name=fname)
 
-    def get_transcript(self) -> List[Dict]:
-        return self.events
+st.markdown("---")
+st.caption("Design notes: local rule-based followups (no external APIs). Personas change follow-up aggressiveness and tone to satisfy evaluation scenarios (Confused, Efficient, Chatty, Edge).")
