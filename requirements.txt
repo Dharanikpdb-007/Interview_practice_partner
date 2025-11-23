@@ -1,11 +1,6 @@
 streamlit
-streamlit-webrtc
-openai
-speechrecognition
-gtts
-pydub
-pandas
-matplotlib
-nltk
+gTTS
+PyPDF2
 plotly
-resume-parser
+pandas
+numpy
