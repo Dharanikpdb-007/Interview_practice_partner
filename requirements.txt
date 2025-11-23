@@ -1,13 +1,11 @@
 streamlit
 streamlit-webrtc
+openai
 speechrecognition
 gtts
 pydub
-plotly
-spacy
-pyresparser
-nltk
-PyAudio
 pandas
 matplotlib
-openai
+nltk
+plotly
+resume-parser
