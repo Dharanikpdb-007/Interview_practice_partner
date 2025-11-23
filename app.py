@@ -42,6 +42,8 @@ st.write("Chat and Voice Based Interview Assessment")
 question = random.choice(questions[mode])
 st.subheader("Interview Question")
 st.write(question)
+tts_speak(question)
+
 
 def tts_speak(text):
     tts = gTTS(text=text, lang="en")
