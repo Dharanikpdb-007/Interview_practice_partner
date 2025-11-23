@@ -1,7 +1,5 @@
 streamlit
-streamlit-webrtc
+st_audiorec
 SpeechRecognition
-pydub
 gTTS
-numpy
-torch
+pydub
