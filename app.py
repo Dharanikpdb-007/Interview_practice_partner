@@ -1,105 +1,117 @@
 import streamlit as st
-from interview_engine import InterviewEngine
-from feedback import analyze_interview
-from utils import save_transcript
-from streamlit_webrtc import webrtc_streamer, WebRtcMode
+from streamlit_webrtc import webrtc_streamer, AudioProcessorBase
 import speech_recognition as sr
-import av
+from gtts import gTTS
 import base64
-import numpy as np
+import os
+import random
+import plotly.graph_objects as go
+from pyresparser import ResumeParser
+import tempfile
 
-st.set_page_config(page_title="Interview Practice Partner", layout="centered")
+st.set_page_config(page_title="Interview Practice Partner", page_icon="🎤", layout="wide")
 
-if "engine" not in st.session_state:
-    st.session_state.engine = InterviewEngine()
+questions = {
+    "HR": [
+        "Tell me about yourself",
+        "Why should we hire you?",
+        "What are your strengths and weaknesses?",
+        "Where do you see yourself in 5 years?"
+    ],
+    "Technical": [
+        "Explain OOP concepts",
+        "What is REST API?",
+        "What is multithreading in Java?",
+        "Explain SDLC phases"
+    ],
+    "Managerial": [
+        "Tell me about a conflict you solved",
+        "How do you manage deadlines?",
+        "Describe a leadership experience",
+        "How do you handle team pressure?"
+    ]
+}
 
-if "mode" not in st.session_state:
-    st.session_state.mode = "Chat"
+if "chat_history" not in st.session_state:
+    st.session_state.chat_history = []
+if "score" not in st.session_state:
+    st.session_state.score = []
 
-engine = st.session_state.engine
+mode = st.sidebar.selectbox("Choose Interview Mode", ["HR", "Technical", "Managerial"])
+st.title("🎤 AI Interview Practice Partner")
+st.write("Chat + Voice answering enabled")
 
-st.title("Interview Practice Partner")
-st.subheader("AI Mock Interview with Chat & Voice Interaction")
+question = random.choice(questions[mode])
+st.subheader("Interview Question")
+st.write(question)
 
-role = st.sidebar.selectbox("Interview Role", ["Software Engineer", "HR", "Sales", "Data Analyst"])
-if role != engine.role:
-    st.session_state.engine = InterviewEngine(role=role)
-    engine = st.session_state.engine
+def tts_speak(text):
+    tts = gTTS(text=text, lang="en")
+    tts.save("reply.mp3")
+    audio_file = open("reply.mp3", "rb").read()
+    b64 = base64.b64encode(audio_file).decode()
+    st.audio(f"data:audio/mp3;base64,{b64}", format="audio/mp3")
 
-mode = st.sidebar.radio("Interaction Mode", ["Chat", "Voice"])
+def evaluate(answer):
+    score = random.randint(6, 10)
+    st.session_state.score.append(score)
+    return score
 
-messages = engine.get_transcript()
-for m in messages:
-    if m["type"] == "agent":
-        st.chat_message("assistant").write(m["text"])
-    else:
-        st.chat_message("user").write(m["text"])
+class AudioProcessor(AudioProcessorBase):
+    def recv(self, frame):
+        return frame
 
-def speak(text):
-    st.session_state.last_audio = text
+st.subheader("Voice Answer Input")
+webrtc_streamer(key="voice", audio_processor_factory=AudioProcessor, media_stream_constraints={"audio": True, "video": False})
 
-def play_audio(text):
-    import gtts
-    from io import BytesIO
-    tts = gtts.gTTS(text)
-    fp = BytesIO()
-    tts.write_to_fp(fp)
-    audio = fp.getvalue()
-    b64 = base64.b64encode(audio).decode()
-    st.markdown(f"<audio autoplay src='data:audio/mp3;base64,{b64}'></audio>", unsafe_allow_html=True)
+r = sr.Recognizer()
 
-if messages and messages[-1]["type"] == "agent":
-    play_audio(messages[-1]["text"])
+def convert_speech_to_text():
+    with sr.Microphone() as source:
+        audio_data = r.listen(source)
+        return r.recognize_google(audio_data)
 
-if mode == "Chat":
-    user_input = st.chat_input("Enter response")
-    if user_input:
-        play_audio(user_input)
-        engine.add_user_response(user_input)
-        st.rerun()
+col1, col2 = st.columns(2)
 
-else:
-    recognizer = sr.Recognizer()
+with col1:
+    if st.button("🎙 Record Answer"):
+        try:
+            text = convert_speech_to_text()
+            st.session_state.chat_history.append(("User", text))
+            score = evaluate(text)
+            st.session_state.chat_history.append(("AI", f"Good response. Score: {score}/10"))
+            tts_speak(f"Thank you for your answer. Your score is {score} out of 10.")
+        except:
+            st.error("Voice not captured. Try again.")
 
-    def callback(frame):
-        audio = frame.to_ndarray().flatten().astype(np.float32).tobytes()
-        st.session_state.audio_data = audio
-        return av.AudioFrame.from_ndarray(frame.to_ndarray(), layout="mono")
+with col2:
+    typed_answer = st.text_input("Or type your answer here")
+    if st.button("Send"):
+        st.session_state.chat_history.append(("User", typed_answer))
+        score = evaluate(typed_answer)
+        st.session_state.chat_history.append(("AI", f"Scored {score}/10"))
+        tts_speak(f"Your typed response score is {score} out of 10.")
 
-    webrtc_streamer(
-        key="speech",
-        mode=WebRtcMode.SENDONLY,
-        audio_frame_callback=callback,
-        media_stream_constraints={"audio": True, "video": False},
-    )
+st.subheader("Chat History")
+for role, msg in st.session_state.chat_history:
+    st.chat_message("assistant" if role=="AI" else "user").write(msg)
 
-    if st.button("Convert Speech to Text"):
-        if "audio_data" in st.session_state:
-            try:
-                audio = sr.AudioData(st.session_state.audio_data, 16000, 2)
-                text = recognizer.recognize_google(audio)
-            except:
-                text = ""
-            if text:
-                play_audio(text)
-                engine.add_user_response(text)
-                st.rerun()
+st.subheader("Score Graph")
+if st.session_state.score:
+    fig = go.Figure(data=go.Scatter(y=st.session_state.score, mode='lines+markers'))
+    st.plotly_chart(fig)
 
-if st.button("Next Question ➜"):
-    engine.advance_question()
-    st.rerun()
-
-if st.button("Generate Feedback"):
-    transcript = engine.get_transcript()
-    report = analyze_interview(transcript)
-    save_transcript(transcript, "transcript.json")
-    st.subheader("Interview Performance Summary")
-    st.metric("Communication", f"{report['communication']} / 5")
-    st.metric("Structure", f"{report['structure']} / 5")
-    st.metric("Technical Depth", f"{report['technical']} / 5")
-    st.metric("Examples", f"{report['examples']} / 5")
-    st.write("Improvement Suggestions:")
-    for s in report["suggestions"]:
-        st.write("-", s)
-    play_audio("Feedback generated. Please review your results below.")
-    st.session_state.engine = InterviewEngine(role=role)
+st.subheader("Upload Resume for Strength / Weakness Analysis")
+resume_file = st.file_uploader("Upload Resume (PDF/DOCX)")
+if resume_file:
+    with tempfile.NamedTemporaryFile(delete=False) as tmp:
+        tmp.write(resume_file.read())
+        tmp_path = tmp.name
+    data = ResumeParser(tmp_path).get_extracted_data()
+    st.write("### Extracted Resume Data")
+    st.json(data)
+    if "skills" in data and data["skills"]:
+        st.write("### Strengths")
+        st.write(", ".join(data["skills"]))
+        st.write("### Weaknesses")
+        st.write("Add more relevant technical certifications and projects.")
