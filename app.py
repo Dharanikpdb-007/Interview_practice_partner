@@ -8,6 +8,18 @@ import random
 import plotly.graph_objects as go
 from pyresparser import ResumeParser
 import tempfile
+import nltk
+import spacy
+
+try:
+    nltk.data.find("corpora/stopwords")
+except:
+    nltk.download("stopwords")
+
+try:
+    spacy.load("en_core_web_sm")
+except:
+    spacy.cli.download("en_core_web_sm")
 
 st.set_page_config(page_title="Interview Practice Partner", page_icon="🎤", layout="wide")
 
