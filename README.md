@@ -1,15 +1,13 @@
- Interview Practice Partner - Cloud Friendly
+# Interview Practice Partner (Live Voice, Browser-based)
 
- What this project provides
-- Voice-enabled interviewer (agent speaks questions using gTTS via browser audio)
-- Text answer input (reliable on Streamlit Cloud)
-- Simple scoring and feedback (communication, technical, examples)
-- Quick resume scan (PDF) with extracted skills and weakness hints
-- Multiple roles and difficulty levels
- How to run locally
-1. pip install -r requirements.txt
-2. streamlit run app.py
+## Overview
+Local, browser-based mock interview tool. Uses the browser Web Speech API for live speech recognition and Speech Synthesis for AI voice output — no external audio libraries or cloud APIs required.
 
- Notes
-- This version avoids heavy NLP packages so it deploys reliably on Streamlit Cloud.
-- For voice input in browser you can paste a transcript into 'Voice_hint' mode or integrate streamlit-webrtc later.
+## Files to use
+- `app.py` — Streamlit app (entry)
+- `voice.py` — browser-based live speech + TTS
+- `interview_engine.py` — interview logic (questions, follow-ups)
+- `feedback.py` — rubric-aligned feedback
+
+## Run locally
+1. Install Streamlit:
