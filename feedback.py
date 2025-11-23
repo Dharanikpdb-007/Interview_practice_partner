@@ -9,7 +9,6 @@ def analyze_interview(transcript: List[Dict]) -> Dict:
 
     for a in answers:
         word_count = len(a.split())
-        # communication score
         if word_count > 80:
             communication_score += 4.5
         elif word_count > 40:
@@ -19,14 +18,12 @@ def analyze_interview(transcript: List[Dict]) -> Dict:
         else:
             communication_score += 2.0
 
-        # technical keywords
         tech_keywords = ["design", "algorithm", "data structure", "debug", "performance", "latency", "optimization", "complexity"]
         if any(k in a.lower() for k in tech_keywords):
             technical_score += 4.0
         else:
             technical_score += 2.0
 
-        # examples / outcomes
         if re.search(r'\b(\d+%|\d+ improvement|improved by|reduced by|increased by|resulted in|achieved)\b', a.lower()):
             examples_score += 4.0
         else:
