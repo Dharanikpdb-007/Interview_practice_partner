@@ -1,6 +1,7 @@
 streamlit
-gTTS
-whisper
 streamlit-webrtc
-torch
+SpeechRecognition
+pydub
+gTTS
 numpy
+torch
