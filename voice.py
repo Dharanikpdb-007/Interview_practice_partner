@@ -1,40 +1,40 @@
 import streamlit as st
-from st_audiorec import st_audiorec
 import tempfile
 import speech_recognition as sr
 from gtts import gTTS
-import os
 
 
 def get_user_voice_text():
-    st.write("🎙️ Click to record your answer:")
+    st.write("🎙️ Upload your recorded answer (MP3/WAV):")
 
-    audio_bytes = st_audiorec()
+    audio_file = st.file_uploader("Upload audio", type=["wav", "mp3"])
 
-    if audio_bytes is None:
+    if audio_file is None:
         return None
 
-    # Save temporary WAV file
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as temp_audio:
-        temp_audio.write(audio_bytes)
-        temp_path = temp_audio.name
+    # Save to temp file
+    with tempfile.NamedTemporaryFile(delete=False, suffix=audio_file.name) as tmp:
+        tmp.write(audio_file.read())
+        temp_path = tmp.name
 
-    # Speech recognition
-    r = sr.Recognizer()
-    with sr.AudioFile(temp_path) as source:
-        audio = r.record(source)
+    # Speech to text
+    recog = sr.Recognizer()
+    with sr.AudioFile(temp_path) as src:
+        audio = recog.record(src)
 
     try:
-        text = r.recognize_google(audio)
+        text = recog.recognize_google(audio)
         return text
     except:
-        return "Sorry, I couldn't understand what you said."
+        return "Sorry, I couldn't understand the audio."
 
 
 def play_ai_voice(text):
     tts = gTTS(text=text, lang="en")
-    temp_path = "ai_voice.mp3"
-    tts.save(temp_path)
-    audio_file = open(temp_path, "rb")
-    audio_bytes = audio_file.read()
+    path = "ai_voice.mp3"
+    tts.save(path)
+
+    with open(path, "rb") as f:
+        audio_bytes = f.read()
+
     st.audio(audio_bytes, format="audio/mp3")
