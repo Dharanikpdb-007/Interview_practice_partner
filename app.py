@@ -3,23 +3,8 @@ from streamlit_webrtc import webrtc_streamer, AudioProcessorBase
 import speech_recognition as sr
 from gtts import gTTS
 import base64
-import os
 import random
 import plotly.graph_objects as go
-from pyresparser import ResumeParser
-import tempfile
-import nltk
-import spacy
-
-try:
-    nltk.data.find("corpora/stopwords")
-except:
-    nltk.download("stopwords")
-
-try:
-    spacy.load("en_core_web_sm")
-except:
-    spacy.cli.download("en_core_web_sm")
 
 st.set_page_config(page_title="Interview Practice Partner", page_icon="🎤", layout="wide")
 
@@ -28,7 +13,7 @@ questions = {
         "Tell me about yourself",
         "Why should we hire you?",
         "What are your strengths and weaknesses?",
-        "Where do you see yourself in 5 years?"
+        "Describe a challenging situation you faced"
     ],
     "Technical": [
         "Explain OOP concepts",
@@ -37,7 +22,7 @@ questions = {
         "Explain SDLC phases"
     ],
     "Managerial": [
-        "Tell me about a conflict you solved",
+        "Tell me about a conflict you resolved",
         "How do you manage deadlines?",
         "Describe a leadership experience",
         "How do you handle team pressure?"
@@ -49,9 +34,10 @@ if "chat_history" not in st.session_state:
 if "score" not in st.session_state:
     st.session_state.score = []
 
-mode = st.sidebar.selectbox("Choose Interview Mode", ["HR", "Technical", "Managerial"])
+mode = st.sidebar.selectbox("Interview Mode", ["HR", "Technical", "Managerial"])
+
 st.title("🎤 AI Interview Practice Partner")
-st.write("Chat + Voice answering enabled")
+st.write("Chat and Voice Based Interview Assessment")
 
 question = random.choice(questions[mode])
 st.subheader("Interview Question")
@@ -86,36 +72,49 @@ def convert_speech_to_text():
 col1, col2 = st.columns(2)
 
 with col1:
-    if st.button("🎙 Record Answer"):
+    if st.button("🎙 Record"):
         try:
             text = convert_speech_to_text()
             st.session_state.chat_history.append(("User", text))
             score = evaluate(text)
-            st.session_state.chat_history.append(("AI", f"Good response. Score: {score}/10"))
-            tts_speak(f"Thank you for your answer. Your score is {score} out of 10.")
+            st.session_state.chat_history.append(("AI", f"Score: {score}/10"))
+            tts_speak(f"Thank you for answering. Your score is {score} out of 10.")
         except:
             st.error("Voice not captured. Try again.")
 
 with col2:
-    typed_answer = st.text_input("Or type your answer here")
+    typed_answer = st.text_input("Or type your answer")
     if st.button("Send"):
         st.session_state.chat_history.append(("User", typed_answer))
         score = evaluate(typed_answer)
-        st.session_state.chat_history.append(("AI", f"Scored {score}/10"))
-        tts_speak(f"Your typed response score is {score} out of 10.")
+        st.session_state.chat_history.append(("AI", f"Score: {score}/10"))
+        tts_speak(f"Your score is {score} out of 10.")
 
-st.subheader("Chat History")
+st.subheader("Conversation History")
 for role, msg in st.session_state.chat_history:
-    st.chat_message("assistant" if role=="AI" else "user").write(msg)
+    st.chat_message("assistant" if role == "AI" else "user").write(msg)
 
-st.subheader("Score Graph")
+st.subheader("Performance Graph")
 if st.session_state.score:
-    fig = go.Figure(data=go.Scatter(y=st.session_state.score, mode='lines+markers'))
+    fig = go.Figure(data=go.Scatter(y=st.session_state.score, mode="lines+markers"))
     st.plotly_chart(fig)
 
 st.subheader("Upload Resume for Strength / Weakness Analysis")
 resume_file = st.file_uploader("Upload Resume (PDF/DOCX)")
+
 if resume_file:
+    import nltk
+    import spacy
+    try:
+        nltk.data.find("corpora/stopwords")
+    except:
+        nltk.download("stopwords")
+    try:
+        spacy.load("en_core_web_sm")
+    except:
+        spacy.cli.download("en_core_web_sm")
+    from pyresparser import ResumeParser
+    import tempfile
     with tempfile.NamedTemporaryFile(delete=False) as tmp:
         tmp.write(resume_file.read())
         tmp_path = tmp.name
@@ -126,4 +125,4 @@ if resume_file:
         st.write("### Strengths")
         st.write(", ".join(data["skills"]))
         st.write("### Weaknesses")
-        st.write("Add more relevant technical certifications and projects.")
+        st.write("Add more project exposure and certifications.")
