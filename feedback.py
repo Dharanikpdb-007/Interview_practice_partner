@@ -1,4 +1,3 @@
-# feedback.py
 import re
 from typing import List, Dict
 
@@ -11,7 +10,6 @@ def _count_fillers(text: str) -> int:
 
 def _detect_star(text: str) -> bool:
     t = text.lower()
-    # look for indicators of Situation/Task/Action/Result or explicit result words
     if any(k in t for k in ("situation", "task", "action", "result", "challenge", "outcome")):
         return True
     if any(k in t for k in ("resulted in", "led to", "improved", "reduced", "increased", "success")):
@@ -26,10 +24,8 @@ def _technical_depth_score(text: str) -> float:
     for kw in keywords:
         if kw in t:
             score += 0.5
-    # reward metrics
     if METRIC_REGEX.search(text):
         score += 1.5
-    # reward clear action words
     if any(a in t for a in ("implemented", "designed", "built", "optimized", "fixed", "led")):
         score += 0.5
     return min(score, 5.0)
@@ -48,7 +44,6 @@ def analyze_interview(transcript: List[Dict]) -> Dict:
         fillers = _count_fillers(a)
         total_fillers += fillers
 
-        # Communication score: 0-5
         if wc < 15:
             comm = 2.0
         elif wc < 40:
@@ -56,17 +51,14 @@ def analyze_interview(transcript: List[Dict]) -> Dict:
         elif wc < 80:
             comm = 4.5
         else:
-            comm = 3.5  # long and possibly rambling
-        # reduce for fillers
+            comm = 3.5
         comm -= min(1.5, 0.4 * fillers)
         comm = max(0.0, min(5.0, comm))
         comm_scores.append(comm)
 
-        # Technical depth
         tech = _technical_depth_score(a)
         tech_scores.append(tech)
 
-        # Examples/STAR
         example_scores.append(5.0 if _detect_star(a) else min(3.0, 1.5 + (wc / 80.0) * 5.0))
 
     n = len(answers)
